@@ -25,6 +25,7 @@ struct ArgSettings {
     is_client: bool,
     files_to_watch: Vec<String>,
     transfer_to: Option<String>,
+    host_ip: String
 }
 
 #[tokio::main]
@@ -50,7 +51,7 @@ async fn main() {
             eprintln!("NO TRANSFER TO BUT CLIENT SELECTED");
         }
         Some(tt) => {
-            run_client(tt).await.unwrap();
+            run_client(tt, settings.host_ip).await.unwrap();
         }
     }
 }
@@ -63,6 +64,7 @@ async fn parse_args() -> ArgSettings {
         is_client: false,
         files_to_watch: vec![],
         transfer_to: None,
+        host_ip: std::env::var("HOST_IP").unwrap_or(String::from("127.0.0.1"))
     };
     for arg in args.into_iter().skip(1) {
         if !for_files && arg == "client" {

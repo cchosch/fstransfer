@@ -5,8 +5,8 @@ use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
 use tokio::time::{sleep, timeout};
 
-pub async fn run_client(transfer_to: String) -> anyhow::Result<()> {
-    let (mut conn, _) = connect_async("ws://localhost:3827/ws").await?;
+pub async fn run_client(transfer_to: String, host_ip: String) -> anyhow::Result<()> {
+    let (mut conn, _) = connect_async(format!("ws://{host_ip}:3827/ws")).await?;
     let (mut write, mut read) = conn.split();
     let mut last_message = Utc::now().timestamp_millis();
     let transfer_to = PathBuf::from(transfer_to);
