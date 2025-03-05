@@ -1,0 +1,7 @@
+/target
+/test_fold
+.env
+.idea
+
+.DS_Store
+desktop.ini
