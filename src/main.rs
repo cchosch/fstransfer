@@ -2,10 +2,12 @@
 mod file_watcher;
 mod ws_server;
 mod ws_client;
+mod log;
 
 use std::ops::{Div, Sub};
 use std::path::Path;
 use std::sync::Arc;
+use ::log::error;
 use async_channel::Receiver;
 use axum::extract::WebSocketUpgrade;
 use axum::response::IntoResponse;
@@ -16,6 +18,7 @@ use chrono::Duration;
 use dotenv::dotenv;
 use tokio::net::TcpListener;
 use crate::file_watcher::FileWatcher;
+use crate::log::init_logger;
 use crate::ws_client::run_client;
 use crate::ws_server::{run_server, upgrade_conn, WsServerState};
 
@@ -31,6 +34,7 @@ struct ArgSettings {
 #[tokio::main]
 async fn main() {
     dotenv().unwrap();
+    init_logger().unwrap();
     // "../cstroll/cmake-build-debug/cstroll.dll", "../cstroll/cmake-build-debug/libcstroll.dll.a"
     let mut settings = parse_args().await;
     if let Ok(t) = std::env::var("TRANSFER_TO") {
@@ -48,7 +52,7 @@ async fn main() {
 
     match settings.transfer_to {
         None => {
-            eprintln!("NO TRANSFER TO BUT CLIENT SELECTED");
+            error!("NO TRANSFER TO BUT CLIENT SELECTED");
         }
         Some(tt) => {
             run_client(tt, settings.host_ip).await.unwrap();

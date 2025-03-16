@@ -3,6 +3,7 @@ use async_tungstenite::tokio::connect_async;
 use async_tungstenite::tungstenite::Message;
 use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
+use log::{error, info};
 use tokio::time::{sleep, timeout};
 
 pub async fn run_client(transfer_to: String, host_ip: String) -> anyhow::Result<()> {
@@ -19,66 +20,62 @@ pub async fn run_client(transfer_to: String, host_ip: String) -> anyhow::Result<
         let msg_delay = msg_delay as u64;
 
         tokio::select! {
+            // heartbeat loop
             _result = sleep(std::time::Duration::from_millis(msg_delay)) => {
-                println!("SENDING HEARTBEAT");
+                info!("SENDING HEARTBEAT");
                 match write.send(Message::text("heartbeat")).await {
                     Err(e) => {
-                        eprintln!("{e}");
+                        error!("{e}");
                         break;
                     },
                     Ok(_) => {}
                 }
                 last_message = Utc::now().timestamp_millis();
             },
+            // file recv loop
             result = read.next() => {
                 let msg = match result {
                     None => {
-                        eprintln!("reader closed");
+                        error!("reader closed");
                         break;
                     },
                     Some(Err(e)) => {
-                        eprintln!("reader error: {e}");
+                        error!("reader error: {e}");
                         continue;
                     }
                     Some(Ok(msg)) => msg
                 };
                 match msg {
+                    /// MESSAGES ENCODING AS FOLLOWING
+                    /// --FILE CONTENTS (variable width)-- --FILE NAME (x len)-- --NAME LENGTH (8 bytes)--
                     Message::Binary(bytes) => {
                         let fl = bytes.to_vec();
-                        let mut alt_len = 0;
-                        let mut cut_at = 0usize;
-                        for i in (0..fl.len()).rev() {
-                            if fl[i] == alt_len % 2 {
-                                alt_len += 1;
-                            } else if fl[i] == 0 {
-                                alt_len = 1;
-                            } else {
-                                alt_len = 0;
-                            }
+                        // separate contents from name length and extract name len
+                        let (fl_conts, name_len_bytes) = fl.split_at(fl.len()-8);
+                        let name_len_bytes: [u8; 8] = match name_len_bytes.try_into() {
+                            Err(e) => {
+                                error!("{e}");
+                                continue;
+                            },
+                            Ok(x) => x
+                        };
+                        let name_len = usize::from_be_bytes(name_len_bytes);
 
-                            if alt_len == 8 {
-                                cut_at = i+8;
-                                break
-                            }
-                        }
-                        if cut_at == 0 {
-                            eprintln!("COULDN'T FIND NAME");
-                            continue;
-                        }
-                        let (fl_conts, name) = fl.split_at(cut_at-8);
-                        let name = String::from_utf8_lossy(name.split_at(8).1).to_string();
+                        // separate contents from name itself
+                        let (fl_conts, name) = fl_conts.split_at(fl_conts.len()-name_len);
+                        let name = String::from_utf8_lossy(name).to_string();
 
                         let w_to = transfer_to.join(name);
                         let fl_conts = fl_conts.to_vec();
                         tokio::spawn(async move {
                             match tokio::fs::write(w_to.clone(), fl_conts).await {
-                                Err(e) => eprintln!("{e}"),
+                                Err(e) => error!("{e}"),
                                 Ok(_) => {}
                             };
                         });
                     }
                     _ => {
-                        println!("NON BINARY MSG {msg:?}");
+                        info!("NON BINARY MSG {msg:?}");
                         continue;
                     }
                 }

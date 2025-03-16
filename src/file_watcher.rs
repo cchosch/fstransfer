@@ -6,6 +6,7 @@ use std::sync::{mpsc, Arc};
 use anyhow::anyhow;
 use async_channel::{Receiver, Sender};
 use chrono::Utc;
+use log::{error, info};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use path_absolutize::Absolutize;
 use tokio::sync::Mutex;
@@ -37,15 +38,16 @@ impl FileWatcher {
     }
 
 
-    pub async fn get_event(&self) -> anyhow::Result<(PathBuf, EventKind)>{
-        while let (p, e) = self.receiver.recv().await? {
+    /// Gets event from receiver. If channel closed, return [`None`]
+    pub async fn get_event(&self) -> Option<(PathBuf, EventKind)>{
+        while let (p, e) = self.receiver.recv().await.ok()? {
             let p = match p.absolutize() {
                 Err(_) => continue,
                 Ok(p) => p.to_path_buf(),
             };
             for file_paths in self.file_paths.iter() {
                 if &p == file_paths {
-                    return Ok((p, e));
+                    return Some((p, e));
                 }
             }
         }
@@ -73,7 +75,7 @@ impl FileWatcher {
                     }
                 }
             }
-            println!("File watcher stopped");
+            info!("File watcher stopped");
         });
 
         let mut file_tracker = Arc::new(Mutex::new(HashMap::<PathBuf, (chrono::DateTime<Utc>, EventKind)>::new()));
@@ -112,7 +114,7 @@ impl FileWatcher {
             }
         }
 
-        println!("Done");
+        info!("Done");
 
     }
 }
@@ -122,7 +124,7 @@ fn get_common_parent(file_paths: &Vec<PathBuf>)-> anyhow::Result<PathBuf> {
     for file_path in file_paths {
         let mut file_path = match file_path.absolutize() {
             Err(e) => {
-                eprintln!("{e} -> {file_path:?}");
+                error!("{e} -> {file_path:?}");
                 continue
             },
             Ok(p) => p.to_path_buf()
